@@ -1,126 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"testing"
-	"time"
 
-	"github.com/tinode/chat/server/auth"
+	"github.com/golang/mock/gomock"
+	"github.com/tinode/chat/server/db/mock_adapter"
 	"github.com/tinode/chat/server/store"
 	"github.com/tinode/chat/server/store/types"
 )
-
-// Dummy DB adapter.
-type dummyAdapter struct {
-	maxResults int
-}
-
-func (a *dummyAdapter) GetName() string {
-	return "dummy"
-}
-
-func (a *dummyAdapter) Open(config json.RawMessage) error                             { return nil }
-func (a *dummyAdapter) Close() error                                                  { return nil }
-func (a *dummyAdapter) IsOpen() bool                                                  { return false }
-func (a *dummyAdapter) GetDbVersion() (int, error)                                    { return 1, nil }
-func (a *dummyAdapter) CheckDbVersion() error                                         { return nil }
-func (a *dummyAdapter) SetMaxResults(val int) error                                   { return nil }
-func (a *dummyAdapter) CreateDb(reset bool) error                                     { return nil }
-func (a *dummyAdapter) UpgradeDb() error                                              { return nil }
-func (a *dummyAdapter) Version() int                                                  { return 1 }
-func (a *dummyAdapter) UserCreate(user *types.User) error                             { return nil }
-func (a *dummyAdapter) UserGet(uid types.Uid) (*types.User, error)                    { return nil, nil }
-func (a *dummyAdapter) UserGetAll(ids ...types.Uid) ([]types.User, error)             { return []types.User{}, nil }
-func (a *dummyAdapter) UserDelete(uid types.Uid, hard bool) error                     { return nil }
-func (a *dummyAdapter) UserUpdate(uid types.Uid, update map[string]interface{}) error { return nil }
-func (a *dummyAdapter) UserUpdateTags(uid types.Uid, add, remove, reset []string) ([]string, error) {
-	return []string{}, nil
-}
-func (a *dummyAdapter) UserGetByCred(method, value string) (types.Uid, error) { return 1, nil }
-func (a *dummyAdapter) UserUnreadCount(uid types.Uid) (int, error)            { return 1, nil }
-func (a *dummyAdapter) CredUpsert(cred *types.Credential) (bool, error)       { return true, nil }
-func (a *dummyAdapter) CredGetActive(uid types.Uid, method string) (*types.Credential, error) {
-	return nil, nil
-}
-func (a *dummyAdapter) CredGetAll(uid types.Uid, method string, validatedOnly bool) ([]types.Credential, error) {
-	return []types.Credential{}, nil
-}
-func (a *dummyAdapter) CredDel(uid types.Uid, method, value string) error { return nil }
-func (a *dummyAdapter) CredConfirm(uid types.Uid, method string) error    { return nil }
-func (a *dummyAdapter) CredFail(uid types.Uid, method string) error       { return nil }
-func (a *dummyAdapter) AuthGetUniqueRecord(unique string) (types.Uid, auth.Level, []byte, time.Time, error) {
-	return 1, auth.LevelAuth, []byte{}, time.Now(), nil
-}
-func (a *dummyAdapter) AuthGetRecord(user types.Uid, scheme string) (string, auth.Level, []byte, time.Time, error) {
-	return "", auth.LevelAuth, []byte{}, time.Now(), nil
-}
-func (a *dummyAdapter) AuthAddRecord(user types.Uid, scheme, unique string, authLvl auth.Level, secret []byte, expires time.Time) error {
-	return nil
-}
-func (a *dummyAdapter) AuthDelScheme(user types.Uid, scheme string) error { return nil }
-func (a *dummyAdapter) AuthDelAllRecords(uid types.Uid) (int, error)      { return 0, nil }
-func (a *dummyAdapter) AuthUpdRecord(user types.Uid, scheme, unique string, authLvl auth.Level, secret []byte, expires time.Time) error {
-	return nil
-}
-func (a *dummyAdapter) TopicCreate(topic *types.Topic) error                        { return nil }
-func (a *dummyAdapter) TopicCreateP2P(initiator, invited *types.Subscription) error { return nil }
-func (a *dummyAdapter) TopicGet(topic string) (*types.Topic, error)                 { return nil, nil }
-func (a *dummyAdapter) TopicsForUser(uid types.Uid, keepDeleted bool, opts *types.QueryOpt) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) UsersForTopic(topic string, keepDeleted bool, opts *types.QueryOpt) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) OwnTopics(uid types.Uid) ([]string, error)                     { return []string{}, nil }
-func (a *dummyAdapter) TopicShare(subs []*types.Subscription) error                   { return nil }
-func (a *dummyAdapter) TopicDelete(topic string, hard bool) error                     { return nil }
-func (a *dummyAdapter) TopicUpdateOnMessage(topic string, msg *types.Message) error   { return nil }
-func (a *dummyAdapter) TopicUpdate(topic string, update map[string]interface{}) error { return nil }
-func (a *dummyAdapter) TopicOwnerChange(topic string, newOwner types.Uid) error       { return nil }
-func (a *dummyAdapter) SubscriptionGet(topic string, user types.Uid) (*types.Subscription, error) {
-	return nil, nil
-}
-func (a *dummyAdapter) SubsForUser(user types.Uid, keepDeleted bool, opts *types.QueryOpt) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) SubsForTopic(topic string, keepDeleted bool, opts *types.QueryOpt) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) SubsUpdate(topic string, user types.Uid, update map[string]interface{}) error {
-	return nil
-}
-func (a *dummyAdapter) SubsDelete(topic string, user types.Uid) error  { return nil }
-func (a *dummyAdapter) SubsDelForTopic(topic string, hard bool) error  { return nil }
-func (a *dummyAdapter) SubsDelForUser(user types.Uid, hard bool) error { return nil }
-func (a *dummyAdapter) FindUsers(user types.Uid, req [][]string, opt []string) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) FindTopics(req [][]string, opt []string) ([]types.Subscription, error) {
-	return []types.Subscription{}, nil
-}
-func (a *dummyAdapter) MessageSave(msg *types.Message) error { return nil }
-func (a *dummyAdapter) MessageGetAll(topic string, forUser types.Uid, opts *types.QueryOpt) ([]types.Message, error) {
-	return []types.Message{}, nil
-}
-func (a *dummyAdapter) MessageDeleteList(topic string, toDel *types.DelMessage) error { return nil }
-func (a *dummyAdapter) MessageGetDeleted(topic string, forUser types.Uid, opts *types.QueryOpt) ([]types.DelMessage, error) {
-	return []types.DelMessage{}, nil
-}
-func (a *dummyAdapter) MessageAttachments(msgId types.Uid, fids []string) error { return nil }
-func (a *dummyAdapter) DeviceUpsert(uid types.Uid, dev *types.DeviceDef) error  { return nil }
-func (a *dummyAdapter) DeviceGetAll(uid ...types.Uid) (map[types.Uid][]types.DeviceDef, int, error) {
-	return map[types.Uid][]types.DeviceDef{}, 0, nil
-}
-func (a *dummyAdapter) DeviceDelete(uid types.Uid, deviceID string) error { return nil }
-func (a *dummyAdapter) FileStartUpload(fd *types.FileDef) error           { return nil }
-func (a *dummyAdapter) FileFinishUpload(fid string, status int, size int64) (*types.FileDef, error) {
-	return nil, nil
-}
-func (a *dummyAdapter) FileGet(fid string) (*types.FileDef, error) { return nil, nil }
-func (a *dummyAdapter) FileDeleteUnused(olderThan time.Time, limit int) ([]string, error) {
-	return []string{}, nil
-}
 
 type Messages struct {
 	messages []interface{}
@@ -141,6 +29,30 @@ func (h *Hub) testHubLoop(done chan bool) {
 }
 
 func TestHandleBroadcastP2P(t *testing.T) {
+	uid1 := types.Uid(1)
+	uid2 := types.Uid(2)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	a := mock_adapter.NewMockAdapter(ctrl)
+
+	a.EXPECT().GetName().Return("dummy")
+	a.EXPECT().IsOpen().Return(false)
+	a.EXPECT().Open(gomock.Any())
+	a.EXPECT().SetMaxResults(gomock.Any())
+	a.EXPECT().CheckDbVersion()
+	a.EXPECT().TopicUpdateOnMessage("p2p-test", gomock.Any()).Return(nil)
+	a.EXPECT().MessageSave(gomock.Any()).Return(nil)
+	a.EXPECT().SubsUpdate("p2p-test", uid1, gomock.Any())
+
+	store.RegisterAdapter(a)
+	storeConfig := []byte(`{"use_config": "dummy",
+                          "uid_key": "la6YsO+bNX/+XIkOqc5Svw==" }`)
+	if err := store.Open(0, storeConfig); err != nil {
+		log.Fatal("Failed to initialize data store:", err)
+	}
+
 	ss := make([]*Session, 2)
 	done := make([]chan bool, 2)
 	messages := make([]*Messages, 2)
@@ -158,10 +70,9 @@ func TestHandleBroadcastP2P(t *testing.T) {
 	globals.hub = h
 	hubDone := make(chan bool)
 	go h.testHubLoop(hubDone)
-	uid1 := types.Uid(1)
-	uid2 := types.Uid(2)
 
 	topic := Topic{
+		name:   "p2p-test",
 		cat:    types.TopicCatP2P,
 		status: topicStatusLoaded,
 		perUser: map[types.Uid]perUserData{
@@ -257,15 +168,4 @@ func TestReplyGetDescInvalidOpts(t *testing.T) {
 	if resp.Ctrl.Code != 400 {
 		t.Errorf("response code: expected 400, found: %d", resp.Ctrl.Code)
 	}
-}
-
-func TestMain(m *testing.M) {
-	store.RegisterAdapter(&dummyAdapter{maxResults: 100})
-	storeConfig := []byte(`{"use_config": "dummy",
-                          "uid_key": "la6YsO+bNX/+XIkOqc5Svw==" }`)
-	if err := store.Open(0, storeConfig); err != nil {
-		log.Fatal("Failed to initialize data store:", err)
-	}
-
-	m.Run()
 }
