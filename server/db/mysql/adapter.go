@@ -840,6 +840,9 @@ func (a *adapter) UserGetAll(ids ...t.Uid) ([]t.User, error) {
 
 		users = append(users, user)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 
 	return users, err
@@ -1326,6 +1329,9 @@ func (a *adapter) TopicsForUser(uid t.Uid, keepDeleted bool, opts *t.QueryOpt) (
 		sub.Private = fromJSON(sub.Private)
 		join[tname] = sub
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 
 	if err != nil {
@@ -1373,6 +1379,9 @@ func (a *adapter) TopicsForUser(uid t.Uid, keepDeleted bool, opts *t.QueryOpt) (
 				join[top.Id] = sub
 			}
 		}
+		if err == nil {
+			err = rows.Err()
+		}
 		rows.Close()
 	}
 
@@ -1408,6 +1417,9 @@ func (a *adapter) TopicsForUser(uid t.Uid, keepDeleted bool, opts *t.QueryOpt) (
 				sub.SetLastSeenAndUA(usr.LastSeen, usr.UserAgent)
 				subs = append(subs, sub)
 			}
+		}
+		if err == nil {
+			err = rows.Err()
 		}
 		rows.Close()
 	}
@@ -1483,6 +1495,9 @@ func (a *adapter) UsersForTopic(topic string, keepDeleted bool, opts *t.QueryOpt
 		sub.SetPublic(fromJSON(public))
 		subs = append(subs, sub)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 
 	if err == nil && tcat == t.TopicCatP2P && len(subs) > 0 {
@@ -1526,6 +1541,9 @@ func (a *adapter) OwnTopics(uid t.Uid) ([]string, error) {
 			break
 		}
 		names = append(names, name)
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
 
@@ -1668,17 +1686,6 @@ func (a *adapter) SubscriptionGet(topic string, user t.Uid) (*t.Subscription, er
 	return &sub, nil
 }
 
-/*
-// Update time when the user was last attached to the topic.
-// TODO: remove, use SubsUpdate().
-func (a *adapter) SubsLastSeen(topic string, user t.Uid, lastSeen map[string]time.Time) error {
-	_, err := a.db.Exec("UPDATE subscriptions SET lastseen=?,useragent=? WHERE topic=? AND userid=?",
-		lastSeen["LastSeen"], lastSeen["UserAgent"], topic, store.DecodeUid(user))
-
-	return err
-}
-*/
-
 // SubsForUser loads a list of user's subscriptions to topics. Does NOT load Public value.
 // TODO: this is used only for presence notifications, no need to load Private either.
 func (a *adapter) SubsForUser(forUser t.Uid, keepDeleted bool, opts *t.QueryOpt) ([]t.Subscription, error) {
@@ -1721,6 +1728,9 @@ func (a *adapter) SubsForUser(forUser t.Uid, keepDeleted bool, opts *t.QueryOpt)
 		ss.User = forUser.String()
 		ss.Private = fromJSON(ss.Private)
 		subs = append(subs, ss)
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
 
@@ -1771,6 +1781,9 @@ func (a *adapter) SubsForTopic(topic string, keepDeleted bool, opts *t.QueryOpt)
 		ss.User = encodeUidString(ss.User).String()
 		ss.Private = fromJSON(ss.Private)
 		subs = append(subs, ss)
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
 
@@ -1942,6 +1955,9 @@ func (a *adapter) FindUsers(uid t.Uid, req [][]string, opt []string) ([]t.Subscr
 		sub.Private = foundTags
 		subs = append(subs, sub)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 
 	return subs, err
@@ -2020,6 +2036,9 @@ func (a *adapter) FindTopics(req [][]string, opt []string) ([]t.Subscription, er
 		sub.Private = foundTags
 		subs = append(subs, sub)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 
 	if err != nil {
@@ -2087,6 +2106,9 @@ func (a *adapter) MessageGetAll(topic string, forUser t.Uid, opts *t.QueryOpt) (
 		msg.Content = fromJSON(msg.Content)
 		msgs = append(msgs, msg)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	rows.Close()
 	return msgs, err
 }
@@ -2126,7 +2148,6 @@ func (a *adapter) MessageGetDeleted(topic string, forUser t.Uid, opts *t.QueryOp
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	var dmsgs []t.DelMessage
 	var dmsg t.DelMessage
@@ -2154,6 +2175,10 @@ func (a *adapter) MessageGetDeleted(topic string, forUser t.Uid, opts *t.QueryOp
 		}
 		dmsg.SeqIdRanges = append(dmsg.SeqIdRanges, t.Range{dellog.Low, dellog.Hi})
 	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
 
 	if err == nil {
 		if dmsg.DelId > 0 {
@@ -2373,6 +2398,9 @@ func (a *adapter) DeviceGetAll(uids ...t.Uid) (map[t.Uid][]t.DeviceDef, int, err
 		})
 		result[uid] = udev
 		count++
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
 
@@ -2737,6 +2765,9 @@ func (a *adapter) FileDeleteUnused(olderThan time.Time, limit int) ([]string, er
 		}
 		locations = append(locations, loc)
 		ids = append(ids, id)
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
 
