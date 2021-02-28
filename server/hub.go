@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tinode/chat/server/auth"
+	"github.com/tinode/chat/server/concurrency"
 	"github.com/tinode/chat/server/logs"
 	"github.com/tinode/chat/server/store"
 	"github.com/tinode/chat/server/store/types"
@@ -187,6 +188,7 @@ func (h *Hub) run() {
 					meta:      make(chan *metaReq, 64),
 					perUser:   make(map[types.Uid]perUserData),
 					exit:      make(chan *shutDown, 1),
+					topicEQ:   concurrency.NewGoRoutinePool(50),
 				}
 				if globals.cluster != nil {
 					if t.isProxy {

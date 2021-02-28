@@ -69,9 +69,11 @@ func (t *Topic) loadContacts(uid types.Uid) error {
 		return err
 	}
 
+	t.perSubsLock.Lock() // W+
 	for i := range subs {
 		t.addToPerSubs(subs[i].Topic, false, (subs[i].ModeGiven & subs[i].ModeWant).IsPresencer())
 	}
+	t.perSubsLock.Unlock() // W-
 	return nil
 }
 
@@ -137,6 +139,7 @@ func (t *Topic) procPresReq(fromUserID, what string, wantReply bool) string {
 
 	if t.cat == types.TopicCatMe {
 
+		t.perSubsLock.Lock() // W+
 		// Find if the contact is listed.
 		if psd, ok := t.perSubs[fromUserID]; ok {
 
@@ -202,6 +205,7 @@ func (t *Topic) procPresReq(fromUserID, what string, wantReply bool) string {
 			// Not in list and asked to be removed from the list - ignore
 			what = ""
 		}
+		t.perSubsLock.Unlock() // W-
 	}
 
 	// If requester's online status has not changed, do not reply, otherwise an endless loop will happen.
@@ -230,6 +234,7 @@ func (t *Topic) presUsersOfInterest(what, ua string) {
 	wantReply := parts[0] == "on"
 	goOffline := len(parts) > 1 && parts[1] == "dis"
 
+	t.perSubsLock.Lock() // W+
 	// Push update to subscriptions
 	for topic, psd := range t.perSubs {
 		// P2P contacts are notified on 'me', group topics are notified on proper topic name.
@@ -257,6 +262,7 @@ func (t *Topic) presUsersOfInterest(what, ua string) {
 			t.perSubs[topic] = psd
 		}
 	}
+	t.perSubsLock.Unlock() // W-
 }
 
 // Publish user's update to his/her users of interest on their 'me' topic while user's 'me' topic is offline
@@ -327,6 +333,8 @@ func (t *Topic) presSubsOnlineDirect(what string, params *presParams, filter *pr
 		Pres: &MsgServerPres{Topic: t.xoriginal, What: what, Acs: params.packAcs(),
 			SeqId: params.seqID, DelId: params.delID, DelSeq: params.delSeq}}
 
+	t.sessionsLock.RLock()
+	t.perUserLock.RLock()
 	for s, pssd := range t.sessions {
 		if !s.isMultiplex() {
 			if skipSid == s.sid {
@@ -355,6 +363,8 @@ func (t *Topic) presSubsOnlineDirect(what string, params *presParams, filter *pr
 		}
 		s.queueOut(msg)
 	}
+	t.perUserLock.RUnlock()
+	t.sessionsLock.RUnlock()
 }
 
 // Communicates "topic unaccessible (cluster rehashing or node connection lost)" event
@@ -386,6 +396,7 @@ func (t *Topic) presSubsOffline(what string, params *presParams,
 		skipTopic = t.name
 	}
 
+	t.perUserLock.RLock() // R+
 	for uid, pud := range t.perUser {
 		if pud.deleted || (!presShouldBypassMode(what) && !presOfflineFilter(pud.modeGiven&pud.modeWant, filterSource)) {
 			continue
@@ -411,6 +422,7 @@ func (t *Topic) presSubsOffline(what string, params *presParams,
 				SkipTopic: skipTopic},
 			RcptTo: user, SkipSid: skipSid}
 	}
+	t.perUserLock.RUnlock() // R-
 }
 
 // Publish {info what=read|recv|kp} to topic subscribers's sessions currently offline in the topic, on subscriber's 'me'.
