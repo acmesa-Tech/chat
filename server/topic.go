@@ -11,7 +11,6 @@ package main
 import (
 	"errors"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -553,6 +552,7 @@ func (t *Topic) runLocal(hub *Hub) {
 
 		case sd := <-t.exit:
 			t.handleTopicTermination(sd)
+			return
 		}
 	}
 }
@@ -866,7 +866,7 @@ func (t *Topic) sendImmediateSubNotifications(asUid types.Uid, acs *MsgAccessMod
 				actor:  asUid.UserId()},
 			sreg.sess.sid, false)
 
-		if t.isChan && isChannel(sreg.pkt.Original) {
+		if t.isChan && types.IsChannel(sreg.pkt.Original) {
 			t.channelSubUnsub(asUid, true)
 		}
 	}
@@ -1273,21 +1273,30 @@ func (t *Topic) subscriptionReply(asChan bool, join *sessionJoin) error {
 		return err
 	}
 
-	// Subscription successfully created. Link topic to session.
-	join.sess.addSub(t.name, &Subscription{
-		broadcast: t.broadcast,
-		done:      t.unreg,
-		meta:      t.meta,
-		supd:      t.supd})
-	t.addSession(join.sess, asUid, asChan)
+	hasJoined := true
+	if modeChanged != nil {
+		if acs, err := types.ParseAcs([]byte(modeChanged.Mode)); err == nil {
+			hasJoined = acs.IsJoiner()
+		}
+	}
 
-	// The user is online in the topic. Increment the counter if notifications are not deferred.
-	if !join.sess.background {
-		t.perUserLock.Lock() // W+
-		userData := t.perUser[asUid]
-		userData.online++
-		t.perUser[asUid] = userData
-		t.perUserLock.Unlock() // W-
+	if hasJoined {
+		// Subscription successfully created. Link topic to session.
+		join.sess.addSub(t.name, &Subscription{
+			broadcast: t.broadcast,
+			done:      t.unreg,
+			meta:      t.meta,
+			supd:      t.supd})
+		t.addSession(join.sess, asUid, asChan)
+
+		// The user is online in the topic. Increment the counter if notifications are not deferred.
+		if !join.sess.background {
+			t.perUserLock.Lock() // W+
+			userData := t.perUser[asUid]
+			userData.online++
+			t.perUser[asUid] = userData
+			t.perUserLock.Unlock() // W-
+		}
 	}
 
 	params := map[string]interface{}{}
@@ -1317,7 +1326,7 @@ func (t *Topic) subscriptionReply(asChan bool, join *sessionJoin) error {
 		t.sendImmediateSubNotifications(asUid, modeChanged, join)
 	}
 
-	if !join.sess.background {
+	if !join.sess.background && hasJoined {
 		// Other notifications are also sent immediately for foreground sessions.
 		t.sendSubNotifications(asUid, join.sess.sid, join.sess.userAgent)
 	}
@@ -1325,7 +1334,35 @@ func (t *Topic) subscriptionReply(asChan bool, join *sessionJoin) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func (t *Topic) thisUserSubPrepare(sess *Session, pkt *ClientComMessage, asUid types.Uid, asChan bool, want string, private interface{}, now time.Time) (types.AccessMode, types.AccessMode, *perUserData, error) {
+=======
+// User requests or updates a self-subscription to a topic. Called as a
+// result of {sub} or {meta set=sub}.
+// Returns new access mode as *MsgAccessMode if user's access mode has changed, nil otherwise.
+//
+//	sess		- originating session
+//	pkt			- client message which triggered this request; {sub} or {set}
+//	asUid		- id of the user making the request
+//	asChan		- true if the user is subscribing to a channel topic
+//	want		- requested access mode
+//	private		- private value to assign to the subscription
+//	background	- presence notifications are deferred
+//
+// Handle these cases:
+// A. User is trying to subscribe for the first time (no subscription).
+// A.1 Normal user is subscribing to the topic.
+// A.2 Reader is joining the channel.
+// B. User is already subscribed, just joining without changing anything.
+// C. User is responding to an earlier invite (modeWant was "N" in subscription).
+// D. User is already subscribed, changing modeWant.
+// E. User is accepting ownership transfer (requesting ownership transfer is not permitted).
+// In case of a group topic the user may be a reader or a full subscriber.
+func (t *Topic) thisUserSub(sess *Session, pkt *ClientComMessage, asUid types.Uid, asChan bool, want string,
+	private interface{}) (*MsgAccessMode, error) {
+
+	now := types.TimeNow()
+>>>>>>> devel
 	asLvl := auth.Level(pkt.AuthLvl)
 	// Access mode values as they were before this request was processed.
 	oldWant := types.ModeNone
@@ -1393,7 +1430,7 @@ func (t *Topic) thisUserSubPrepare(sess *Session, pkt *ClientComMessage, asUid t
 			oldGiven = types.ModeCChnReader
 			userData.modeGiven = types.ModeCChnReader
 
-			if sub != nil {
+			if sub != nil && sub.DeletedAt == nil {
 				// Subscription exists, read old access mode.
 				oldWant = sub.ModeWant
 			} else {
@@ -1423,8 +1460,17 @@ func (t *Topic) thisUserSubPrepare(sess *Session, pkt *ClientComMessage, asUid t
 			}
 		}
 
+		// Reject new subscription: 'given' permissions have no 'J'.
+		if !userData.modeGiven.IsJoiner() {
+			sess.queueOut(ErrPermissionDeniedReply(pkt, now))
+			return nil, errors.New("subscription rejected due to permissions")
+		}
+
 		// Undelete.
-		userData.deleted = false
+		if userData.deleted {
+			userData.deleted = false
+			userData.delID, userData.readID, userData.recvID = 0, 0, 0
+		}
 
 		if isNullValue(private) {
 			private = nil
@@ -1432,7 +1478,7 @@ func (t *Topic) thisUserSubPrepare(sess *Session, pkt *ClientComMessage, asUid t
 		userData.private = private
 
 		// Add subscription to database, if missing.
-		if sub == nil {
+		if sub == nil || sub.DeletedAt != nil {
 			sub = &types.Subscription{
 				User:      asUid.String(),
 				Topic:     tname,
@@ -1674,8 +1720,9 @@ func (t *Topic) thisUserSub(sess *Session, pkt *ClientComMessage, asUid types.Ui
 		t.evictUser(asUid, false, "")
 		// The callee will send NoErrOK
 		return modeChanged, nil
+	}
 
-	} else if !userData.modeGiven.IsJoiner() {
+	if !userData.modeGiven.IsJoiner() {
 		// User was banned
 		sess.queueOut(ErrPermissionDeniedReply(pkt, now))
 		return nil, errors.New("topic access denied; user is banned")
@@ -2414,7 +2461,7 @@ func (t *Topic) replyGetSub(sess *Session, asUid types.Uid, authLevel auth.Level
 						mts.Acs.Mode = subMode.String()
 						mts.Acs.Want = sub.ModeWant.String()
 						mts.Acs.Given = sub.ModeGiven.String()
-					} else if isChannel(sub.Topic) {
+					} else if types.IsChannel(sub.Topic) {
 						mts.Acs.Mode = types.ModeCChnReader.String()
 					} else if defacs := sub.GetDefaultAccess(); defacs != nil {
 						switch authLevel {
@@ -3145,7 +3192,9 @@ func (t *Topic) evictUser(uid types.Uid, unsub bool, skip string) {
 			delete(t.perUser, uid)
 			t.computePerUserAcsUnion()
 
-			usersRegisterUser(uid, false)
+			if !pud.isChan {
+				usersRegisterUser(uid, false)
+			}
 		}
 	} else if ok {
 		if pud.isChan {
@@ -3658,7 +3707,7 @@ func (t *Topic) isOnline() bool {
 // Verifies if topic can be access by the provided name: access any topic as non-channel, access channel as channel.
 // Returns true if access is for channel, false if not and error if access is invalid.
 func (t *Topic) verifyChannelAccess(asTopic string) (bool, error) {
-	if !isChannel(asTopic) {
+	if !types.IsChannel(asTopic) {
 		return false, nil
 	}
 	if t.isChan {
@@ -3675,13 +3724,6 @@ func topicCat(name string) types.TopicCat {
 // Generate random string as a name of the group topic
 func genTopicName() string {
 	return "grp" + store.GetUidString()
-}
-
-// Check if group topic is referenced as a channel.
-// The "nch" should not be considered a channel reference because it can only be used by the topic owner at the time of
-// group topic creation.
-func isChannel(name string) bool {
-	return strings.HasPrefix(name, "chn")
 }
 
 // Convert expanded (routable) topic name into name suitable for sending to the user.

@@ -418,9 +418,19 @@ func (h *Hub) topicUnreg(sess *Session, topic string, msg *ClientComMessage, rea
 		} else {
 			// Case 1.2: topic is offline.
 
-			asUid := types.ParseUserId(msg.AsUser)
-			// Get all subscribers: we need to know how many are left and notify them.
-			subs, err := store.Topics.GetSubs(topic, nil)
+			tcat := topicCat(topic)
+			var opts *types.QueryOpt
+			if tcat == types.TopicCatGrp {
+				opts = &types.QueryOpt{User: asUid}
+				// Is user a channel subscriber? Use chnABC instead of grpABC.
+				if types.IsChannel(msg.Original) {
+					topic = msg.Original
+				}
+			}
+
+			// For P2P topics get all subscribers: we need to know how many are left and notify them.
+			// For gourp topics (and channels) get just the user's subscription.
+			subs, err := store.Topics.GetSubs(topic, opts)
 			if err != nil {
 				sess.queueOut(ErrUnknownReply(msg, now))
 				return err
@@ -442,11 +452,10 @@ func (h *Hub) topicUnreg(sess *Session, topic string, msg *ClientComMessage, rea
 
 			if sub == nil {
 				// If user has no subscription, tell him all is fine
-				sess.queueOut(InfoNoAction(msg.Id, msg.Original, now, msg.Timestamp))
+				sess.queueOut(InfoNoActionReply(msg, now))
 				return nil
 			}
 
-			tcat := topicCat(topic)
 			if !(sub.ModeGiven & sub.ModeWant).IsOwner() {
 				// Case 1.2.2.1 Not the owner, but possibly last subscription in a P2P topic.
 
@@ -567,7 +576,7 @@ func replyOfflineTopicGetDesc(sess *Session, msg *ClientComMessage) {
 	asUid := types.ParseUserId(msg.AsUser)
 	topic := msg.RcptTo
 
-	if strings.HasPrefix(topic, "grp") {
+	if strings.HasPrefix(topic, "grp") || topic == "sys" {
 		stopic, err := store.Topics.Get(topic)
 		if err != nil {
 			logs.Info.Println("replyOfflineTopicGetDesc", err)
@@ -587,7 +596,6 @@ func replyOfflineTopicGetDesc(sess *Session, msg *ClientComMessage) {
 				Auth: stopic.Access.Auth.String(),
 				Anon: stopic.Access.Anon.String()}
 		}
-
 	} else {
 		// 'me' and p2p topics
 		uid := types.ZeroUid
@@ -659,7 +667,12 @@ func replyOfflineTopicGetSub(sess *Session, msg *ClientComMessage) {
 		return
 	}
 
-	ssub, err := store.Subs.Get(msg.RcptTo, types.ParseUserId(msg.AsUser))
+	topicName := msg.RcptTo
+	if types.IsChannel(msg.Original) {
+		topicName = msg.Original
+	}
+
+	ssub, err := store.Subs.Get(topicName, types.ParseUserId(msg.AsUser))
 	if err != nil {
 		logs.Warn.Println("replyOfflineTopicGetSub:", err)
 		sess.queueOut(decodeStoreErrorExplicitTs(err, msg.Id, msg.Original, now, msg.Timestamp, nil))
@@ -689,6 +702,8 @@ func replyOfflineTopicGetSub(sess *Session, msg *ClientComMessage) {
 			sub.ReadSeqId = ssub.ReadSeqId
 			sub.RecvSeqId = ssub.RecvSeqId
 		}
+	} else {
+		sub.DeletedAt = ssub.DeletedAt
 	}
 
 	sess.queueOut(&ServerComMessage{
@@ -713,7 +728,12 @@ func replyOfflineTopicSetSub(sess *Session, msg *ClientComMessage) {
 
 	asUid := types.ParseUserId(msg.AsUser)
 
-	sub, err := store.Subs.Get(msg.RcptTo, asUid)
+	topicName := msg.RcptTo
+	if types.IsChannel(msg.Original) {
+		topicName = msg.Original
+	}
+
+	sub, err := store.Subs.Get(topicName, asUid)
 	if err != nil {
 		logs.Warn.Println("replyOfflineTopicSetSub get sub:", err)
 		sess.queueOut(decodeStoreErrorExplicitTs(err, msg.Id, msg.Original, now, msg.Timestamp, nil))
@@ -763,7 +783,7 @@ func replyOfflineTopicSetSub(sess *Session, msg *ClientComMessage) {
 	}
 
 	if len(update) > 0 {
-		err = store.Subs.Update(msg.RcptTo, asUid, update, true)
+		err = store.Subs.Update(topicName, asUid, update, true)
 		if err != nil {
 			logs.Warn.Println("replyOfflineTopicSetSub update:", err)
 			sess.queueOut(decodeStoreErrorExplicitTs(err, msg.Id, msg.Original, now, msg.Timestamp, nil))
