@@ -1334,35 +1334,7 @@ func (t *Topic) subscriptionReply(asChan bool, join *sessionJoin) error {
 	return nil
 }
 
-<<<<<<< HEAD
 func (t *Topic) thisUserSubPrepare(sess *Session, pkt *ClientComMessage, asUid types.Uid, asChan bool, want string, private interface{}, now time.Time) (types.AccessMode, types.AccessMode, *perUserData, error) {
-=======
-// User requests or updates a self-subscription to a topic. Called as a
-// result of {sub} or {meta set=sub}.
-// Returns new access mode as *MsgAccessMode if user's access mode has changed, nil otherwise.
-//
-//	sess		- originating session
-//	pkt			- client message which triggered this request; {sub} or {set}
-//	asUid		- id of the user making the request
-//	asChan		- true if the user is subscribing to a channel topic
-//	want		- requested access mode
-//	private		- private value to assign to the subscription
-//	background	- presence notifications are deferred
-//
-// Handle these cases:
-// A. User is trying to subscribe for the first time (no subscription).
-// A.1 Normal user is subscribing to the topic.
-// A.2 Reader is joining the channel.
-// B. User is already subscribed, just joining without changing anything.
-// C. User is responding to an earlier invite (modeWant was "N" in subscription).
-// D. User is already subscribed, changing modeWant.
-// E. User is accepting ownership transfer (requesting ownership transfer is not permitted).
-// In case of a group topic the user may be a reader or a full subscriber.
-func (t *Topic) thisUserSub(sess *Session, pkt *ClientComMessage, asUid types.Uid, asChan bool, want string,
-	private interface{}) (*MsgAccessMode, error) {
-
-	now := types.TimeNow()
->>>>>>> devel
 	asLvl := auth.Level(pkt.AuthLvl)
 	// Access mode values as they were before this request was processed.
 	oldWant := types.ModeNone
@@ -1463,7 +1435,7 @@ func (t *Topic) thisUserSub(sess *Session, pkt *ClientComMessage, asUid types.Ui
 		// Reject new subscription: 'given' permissions have no 'J'.
 		if !userData.modeGiven.IsJoiner() {
 			sess.queueOut(ErrPermissionDeniedReply(pkt, now))
-			return nil, errors.New("subscription rejected due to permissions")
+			return types.ModeNone, types.ModeNone, nil, errors.New("subscription rejected due to permissions")
 		}
 
 		// Undelete.
